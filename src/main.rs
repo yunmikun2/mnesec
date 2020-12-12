@@ -3,25 +3,29 @@ mod dictionary;
 use dictionary::DICTIONARY;
 
 use std::io;
-use std::io::Read;
+use std::io::{BufReader, ErrorKind, Read};
 
 fn main() {
+    let mut stdin = BufReader::new(io::stdin());
     let mut words: Vec<&str> = vec![];
 
     loop {
         let mut buf: [u8; 11] = [0; 11];
-        let read_size = io::stdin().read(&mut buf).expect("Failed to read stdin");
 
-        if read_size == 0 {
-            break;
-        }
+        match stdin.read(&mut buf) {
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => panic!("Failed to read stdio!"),
+            Ok(0) => break,
+            Ok(read_size) => {
+                let m = read_size * 8;
+                let words_count = m / 11 + if m % 11 > 0 { 1 } else { 0 };
 
-        let words_count = (f64::from(read_size as u16) * 8.0 / 11.0).ceil() as u16;
-
-        for _ in 0..words_count {
-            let i = (u16::from(buf[0]) << 3) | ((u16::from(buf[1]) & 0b11100000) >> 5);
-            words.push(DICTIONARY[i as usize]);
-            shift_11(&mut buf);
+                for _ in 0..words_count {
+                    let i = (u16::from(buf[0]) << 3) | ((u16::from(buf[1]) & 0b11100000) >> 5);
+                    words.push(DICTIONARY[i as usize]);
+                    shift_11(&mut buf);
+                }
+            }
         }
     }
 
