@@ -1,5 +1,7 @@
 ## mneseq
 
+![](https://github.com/yunmikun2/mneseq/workflows/Code%20Quality/badge.svg)
+
 Generates mnemonic sequences from random bytes from stdin.
 
 ### Example
