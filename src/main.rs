@@ -3,10 +3,14 @@ mod dictionary;
 use dictionary::DICTIONARY;
 
 use std::io;
-use std::io::{BufReader, ErrorKind, Read};
+use std::io::{BufReader, ErrorKind, Read, Stdin};
 
 fn main() {
     let mut stdin = BufReader::new(io::stdin());
+    encode(&mut stdin);
+}
+
+fn encode(stdin: &mut BufReader<Stdin>) {
     let mut words: Vec<&str> = vec![];
     let mut buf: [u8; 11] = [0; 11];
 
