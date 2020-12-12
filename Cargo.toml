@@ -1,10 +1,15 @@
+cargo-features = ["strip"]
+
 [package]
 name = "mnesec"
 version = "0.1.0"
 authors = ["yunmi <yunmikun2@protonmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+lto = true
+panic = "abort"
+strip = "symbols"
 
 [dependencies]
 clap = "3.0.0-beta.2"
