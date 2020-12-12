@@ -1,5 +1,5 @@
 /// 2048 words from which we are going to generate our sequences.
-pub const DICTIONARY: &'static [&'static str] = &[
+pub const DICTIONARY: &'static [&str] = &[
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd",
     "abuse", "access", "accident", "account", "accuse", "achieve", "acid", "acoustic", "acquire",
     "across", "act", "action", "actor", "actress", "actual", "adapt", "add", "addict", "address",
