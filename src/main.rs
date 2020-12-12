@@ -1,6 +1,6 @@
 mod dictionary;
 
-use dictionary::DICTIONARY;
+use dictionary::{DECODE_DICTIONARY, DICTIONARY};
 
 use std::io;
 use std::io::{BufReader, ErrorKind, Read, Stdin};
@@ -11,13 +11,25 @@ use clap::Clap;
 /// words.
 #[derive(Clap)]
 #[clap(version = "0.1.0", author = "yunmikun <yunmikun2@protonmail.com>")]
-struct Opts {}
+struct Opts {
+    /// Decode mnemonic sequence from stdin back into byte-sequence.
+    #[clap(short, long)]
+    decode: bool,
+}
 
 fn main() {
-    let _opts = Opts::parse();
+    let opts = Opts::parse();
     let mut stdin = BufReader::new(io::stdin());
 
-    encode(&mut stdin);
+    if opts.decode {
+        decode(&mut stdin);
+    } else {
+        encode(&mut stdin);
+    }
+}
+
+fn decode(_stdin: &mut BufReader<Stdin>) {
+    println!("kek");
 }
 
 fn encode(stdin: &mut BufReader<Stdin>) {
