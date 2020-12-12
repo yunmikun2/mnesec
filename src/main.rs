@@ -5,8 +5,18 @@ use dictionary::DICTIONARY;
 use std::io;
 use std::io::{BufReader, ErrorKind, Read, Stdin};
 
+use clap::Clap;
+
+/// Encodes bytes passed to stdin into mnemonic sequence of dash-separated
+/// words.
+#[derive(Clap)]
+#[clap(version = "0.1.0", author = "yunmikun <yunmikun2@protonmail.com>")]
+struct Opts {}
+
 fn main() {
+    let _opts = Opts::parse();
     let mut stdin = BufReader::new(io::stdin());
+
     encode(&mut stdin);
 }
 
