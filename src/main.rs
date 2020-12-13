@@ -3,7 +3,7 @@ mod dictionary;
 use dictionary::{DECODE_DICTIONARY, DICTIONARY};
 
 use std::io;
-use std::io::{BufReader, ErrorKind, Read, Stdin};
+use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 
 use clap::Clap;
 
@@ -20,19 +20,114 @@ struct Opts {
 fn main() {
     let opts = Opts::parse();
     let mut stdin = BufReader::new(io::stdin());
+    let mut stdout = BufWriter::new(io::stdout());
 
     if opts.decode {
-        decode(&mut stdin);
+        decode(&mut stdin, &mut stdout);
     } else {
-        encode(&mut stdin);
+        encode(&mut stdin, &mut stdout);
     }
 }
 
-fn decode(_stdin: &mut BufReader<Stdin>) {
-    println!("kek");
+fn decode<R, W>(mut stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
+where
+    R: Read,
+    W: Write,
+{
+    let input = read_string_from_reader(&mut stdin);
+    let word_indices: Vec<u16> = words_to_indices(&input);
+
+    let mut buf: Vec<u8> = {
+        let buf_size = bytes_encoded_for_words(word_indices.len());
+        vec![0; buf_size]
+    };
+
+    for (n, x) in word_indices.iter().enumerate() {
+        write_with_shift_11(&mut buf, x, &n);
+    }
+
+    stdout.write(&buf).expect("Failed to write to stdout");
 }
 
-fn encode(stdin: &mut BufReader<Stdin>) {
+fn read_string_from_reader<R>(reader: &mut R) -> String
+where
+    R: Read,
+{
+    let mut buf: String = String::new();
+
+    loop {
+        match reader.read_to_string(&mut buf) {
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => panic!("Failed to read stdio: {}", e),
+            Ok(_) => break,
+        }
+    }
+
+    trim_newline(&mut buf);
+    buf
+}
+
+fn trim_newline(s: &mut String) {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+}
+
+fn words_to_indices(string: &str) -> Vec<u16> {
+    string
+        .split("-")
+        .map(|word| match DECODE_DICTIONARY.get(word) {
+            Some(index) => index.clone(),
+            None => panic!("Unknown word: {}", word),
+        })
+        .collect()
+}
+
+fn bytes_encoded_for_words(n: usize) -> usize {
+    let bits_used = n * 11;
+    let bits_left = bits_used % 8;
+    bits_used / 8 + if bits_left > 0 { 1 } else { 0 }
+}
+
+fn write_with_shift_11(buf: &mut [u8], value: &u16, index: &usize) {
+    let bit_length = index * 11;
+    let byte_position = bit_length / 8;
+    let bit_shift = bit_length % 8;
+    const VALUE_SHIFT: usize = 11 - 8;
+
+    let applied_first_mask = (0xFF << (8 - bit_shift)) as u8;
+    let applied_first = (value >> (bit_shift + VALUE_SHIFT)) as u8;
+    buf[byte_position as usize] &= applied_first_mask;
+    buf[byte_position as usize] |= applied_first;
+
+    if bit_shift < 5 {
+        let applied_second_mask = 0xFF >> (VALUE_SHIFT + bit_shift);
+        let applied_second = (value << (8 - VALUE_SHIFT - bit_shift)) as u8;
+
+        buf[byte_position + 1 as usize] &= applied_second_mask;
+        buf[byte_position + 1 as usize] |= applied_second;
+    } else if bit_shift == 5 {
+        let applied_second = (0xFF & value) as u8;
+        buf[byte_position + 1 as usize] = applied_second;
+    } else {
+        let applied_second = (value >> (bit_shift - 5)) as u8;
+        let applied_third_mask = 0xFF >> (bit_shift - 5);
+        let applied_third = (value << (16 - VALUE_SHIFT - bit_shift)) as u8;
+
+        buf[byte_position + 1 as usize] = applied_second;
+        buf[byte_position + 2 as usize] &= applied_third_mask;
+        buf[byte_position + 2 as usize] |= applied_third;
+    }
+}
+
+fn encode<R, W>(stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
+where
+    R: Read,
+    W: Write,
+{
     let mut words: Vec<&str> = vec![];
     let mut buf: [u8; 11] = [0; 11];
 
@@ -44,8 +139,10 @@ fn encode(stdin: &mut BufReader<Stdin>) {
             Ok(sz) => sz,
         };
 
-        let m = read_size * 8;
-        let words_count = m / 11 + if m % 11 > 0 { 1 } else { 0 };
+        let words_count = {
+            let bit_size = read_size * 8;
+            bit_size / 11 + if bit_size % 11 > 0 { 1 } else { 0 }
+        };
 
         for _ in 0..words_count {
             let i = (u16::from(buf[0]) << 3) | ((u16::from(buf[1]) & 0b11100000) >> 5);
@@ -54,7 +151,9 @@ fn encode(stdin: &mut BufReader<Stdin>) {
         }
     }
 
-    print!("{}", words.join("-"));
+    stdout
+        .write(words.join("-").as_bytes())
+        .expect("Failed to write to stdout");
 }
 
 /// Shift the buffer left for 11 bits.
@@ -71,7 +170,9 @@ fn shift_11(buf: &mut [u8]) {
 
 #[cfg(test)]
 mod tests {
-    use crate::shift_11;
+    use crate::{decode, encode, shift_11, write_with_shift_11};
+    use rand::Rng;
+    use std::io::{BufReader, BufWriter};
 
     #[test]
     fn shift_11_works_correctly() {
@@ -85,5 +186,46 @@ mod tests {
 
         shift_11(&mut source);
         assert_eq!(source, expected);
+    }
+
+    #[test]
+    fn write_with_shift_11_works_correctly() {
+        let mut source = [0b11111111, 0b10100000, 0b00000000];
+        let value = 0b11111111111;
+        let expected = [0b11111111, 0b10111111, 0b11111100];
+
+        write_with_shift_11(&mut source, &value, &1);
+        assert_eq!(source, expected);
+    }
+
+    #[test]
+    fn write_with_shift_11_works_when_bit_shift_is_greater_than_5() {
+        // On 5th word the bit shift is 7; on 2th it's 6.
+
+        let mut source: [u8; 9] = [0; 9];
+
+        let value = 0b11111111111;
+        let expected = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0xFF, 0b11000000];
+
+        write_with_shift_11(&mut source, &value, &5);
+        assert_eq!(source, expected);
+    }
+
+    #[test]
+    fn naive_encoding_with_deconding_produces_original_sequense_of_bytes() {
+        let original = rand::thread_rng().gen::<[u8; 11]>();
+        let mut mediator: Vec<u8> = Vec::new();
+        let mut result: Vec<u8> = Vec::new();
+        {
+            let mut stdin1 = BufReader::new(&original[..]);
+            let mut stdout1 = BufWriter::new(&mut mediator);
+            encode(&mut stdin1, &mut stdout1);
+        }
+        {
+            let mut stdin2 = BufReader::new(&mediator[..]);
+            let mut stdout2 = BufWriter::new(&mut result);
+            decode(&mut stdin2, &mut stdout2);
+        }
+        assert_eq!(&original, &result[..]);
     }
 }
