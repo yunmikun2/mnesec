@@ -235,7 +235,7 @@ fn shift_11(buf: &mut [u8]) {
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode, shift_11, write_with_shift_11};
-    use rand::Rng;
+    use rand::{Rng, RngCore};
     use std::io::{BufReader, BufWriter};
 
     #[test]
@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn naive_encoding_with_deconding_produces_original_sequense_of_bytes() {
+    fn naive_encoding_with_decoding_produces_original_sequence_of_bytes() {
         let original = rand::thread_rng().gen::<[u8; 11]>();
         let mut mediator: Vec<u8> = Vec::new();
         let mut result: Vec<u8> = Vec::new();
@@ -294,20 +294,29 @@ mod tests {
     }
 
     #[test]
-    fn any_encoding_with_decoding_produces_original_sequense_of_bytes() {
-        let original = rand::thread_rng().gen::<[u8; 8]>();
-        let mut mediator: Vec<u8> = Vec::new();
-        let mut result: Vec<u8> = Vec::new();
-        {
-            let mut stdin1 = BufReader::new(&original[..]);
-            let mut stdout1 = BufWriter::new(&mut mediator);
-            encode(&mut stdin1, &mut stdout1);
+    fn any_encoding_with_decoding_produces_original_sequence_of_bytes() {
+        const MAX_DATA_LEN: usize = 128;
+        const TEST_PASSES: u32 = 25;
+
+        for pass in 0..TEST_PASSES {
+            let data_len = rand::thread_rng().gen_range(0, MAX_DATA_LEN);
+            let mut original = vec![0; data_len];
+
+            rand::thread_rng().fill_bytes(original.as_mut_slice());
+            let mut mediator: Vec<u8> = Vec::new();
+            let mut result: Vec<u8> = Vec::new();
+            {
+                let mut stdin1 = BufReader::new(&original[..]);
+                let mut stdout1 = BufWriter::new(&mut mediator);
+                encode(&mut stdin1, &mut stdout1);
+            }
+            {
+                let mut stdin2 = BufReader::new(&mediator[..]);
+                let mut stdout2 = BufWriter::new(&mut result);
+                decode(&mut stdin2, &mut stdout2);
+            }
+            assert_eq!(&original, &result[..],
+                       "pass {}, len {}", pass, data_len);
         }
-        {
-            let mut stdin2 = BufReader::new(&mediator[..]);
-            let mut stdout2 = BufWriter::new(&mut result);
-            decode(&mut stdin2, &mut stdout2);
-        }
-        assert_eq!(&original, &result[..]);
     }
 }
