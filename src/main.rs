@@ -2,20 +2,10 @@ mod dictionary;
 
 use dictionary::{DECODE_DICTIONARY, DICTIONARY};
 
-use std::io;
-use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
+use std::io::{self, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::mem;
 
 use clap::Clap;
-use regex::Regex;
-
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static! {
-    static ref IS_PADDED_RE: Regex = Regex::new(r".*\-of\-.*").unwrap();
-    static ref ENCODED_RE: Regex = Regex::new(r"\-of\-.*").unwrap();
-    static ref PADDING_RE: Regex = Regex::new(r".*\-of\-").unwrap();
-}
 
 /// Encodes bytes passed to stdin into mnemonic sequence of dash-separated
 /// words.
@@ -58,37 +48,52 @@ fn show_padding_words() {
 }
 
 fn decode<R, W>(mut stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
-where
-    R: Read,
-    W: Write,
+    where
+        R: Read,
+        W: Write,
 {
+    const EVEN_MARK: &str = "-of-";
+    const EVEN_MARK_LEN: usize = EVEN_MARK.len();
+
     let input = read_string_from_reader(&mut stdin);
-    let is_padded = IS_PADDED_RE.is_match(&input);
-    let encoded_string = ENCODED_RE.replace_all(&input, "");
+    let even_mark = input.rfind(EVEN_MARK);
 
-    let word_indices: Vec<u16> = words_to_indices(&encoded_string);
-
-    let mut buf: Vec<u8> = {
-        let buf_size = bytes_encoded_for_words(word_indices.len());
-        vec![0; buf_size]
+    let word_indices = match even_mark {
+        Some(pos) => {
+            let (head, tail) = input.split_at(pos);
+            words_to_indices(head, Some(&tail[EVEN_MARK_LEN..]))
+        }
+        None => words_to_indices(input.as_str(), None),
     };
+
+    let words_count = word_indices.len();
+    let bit_size = words_count * 11;
+    let bit_rem = bit_size % 8;
+    let buf_size = bit_size / 8 + if bit_rem > 0 { 1 } else { 0 };
+
+    let mut data_size = buf_size;
+    let mut buf = vec![0_u8; buf_size];
 
     for (n, x) in word_indices.iter().enumerate() {
         write_with_shift_11(&mut buf, *x, n);
     }
 
-    let final_buf = if is_padded {
-        buf.split_last().unwrap().1
-    } else {
-        buf.as_slice()
-    };
+    if even_mark.is_none() {
+        if bit_rem != 0 {
+            data_size -= 1;
+        }
+        if buf[buf_size - 1] & 0x80 > 0 {
+            data_size -= 1;
+        }
+    }
 
-    stdout.write(&final_buf).expect("Failed to write to stdout");
+    stdout.write(&buf[..data_size])
+        .expect("Failed to write to stdout");
 }
 
 fn read_string_from_reader<R>(reader: &mut R) -> String
-where
-    R: Read,
+    where
+        R: Read,
 {
     let mut buf: String = String::new();
 
@@ -113,14 +118,15 @@ fn trim_newline(s: &mut String) {
     }
 }
 
-fn words_to_indices(string: &str) -> Vec<u16> {
-    string
+fn words_to_indices(string: &str, last_word: Option<&str>) -> Vec<u16> {
+    return string
         .split("-")
+        .chain(last_word.iter().cloned())
         .map(|word| match DECODE_DICTIONARY.get(word) {
             Some(index) => *index,
             None => panic!("Unknown word: {}", word),
         })
-        .collect()
+        .collect();
 }
 
 // TODO!: Remove. Left it here 'coz don't know if we are gonna need
@@ -135,12 +141,6 @@ fn bit_shift_for_word(word: &str, is_padded: bool) -> usize {
     } else {
         0
     }
-}
-
-fn bytes_encoded_for_words(n: usize) -> usize {
-    let bits_used = n * 11;
-    let bits_left = bits_used % 8;
-    bits_used / 8 + if bits_left > 0 { 1 } else { 0 }
 }
 
 fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
@@ -175,44 +175,61 @@ fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
 }
 
 fn encode<R, W>(stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
-where
-    R: Read,
-    W: Write,
+    where
+        R: Read,
+        W: Write,
 {
+    const BUF_SIZE: usize = 11;
+
     let mut words: Vec<&str> = vec![];
-    let mut buf: [u8; 11] = [0; 11];
-    let mut final_shift: usize = 0;
+
+    let (mut buf_a, mut buf_b) = ([0_u8; BUF_SIZE], [0_u8; BUF_SIZE]);
+    let mut read_buf = &mut buf_a;
+    let mut work_buf = &mut buf_b;
+
+    let mut work_rs: usize = 0;
+    let mut bytes_read: usize = 0;
 
     loop {
-        let read_size = match stdin.read(&mut buf) {
+        let read_size = match stdin.read(read_buf) {
             Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(e) => panic!("Failed to read stdio: {}", e),
-            Ok(0) => break,
             Ok(sz) => sz,
         };
 
-        let words_count = {
-            let bit_size = read_size * 8;
+        if work_rs > 0 {
+            let bit_size = work_rs * 8;
             let bit_shift = bit_size % 11;
+            let words_count = bit_size / 11 + if bit_shift > 0 { 1 } else { 0 };
 
-            if bit_shift > 0 {
-                final_shift = bit_shift;
+            if read_size == 0 && bit_shift != 0 &&
+                (words.len() + words_count) * 11 / 8 > bytes_read {
+                // /\ words count + pending words
+                // \/ set subtract bit
+
+                work_buf[work_rs + if words_count % 8 == 0 {0} else {1}] |= 0x80;
             }
 
-            bit_size / 11 + if bit_shift > 0 { 1 } else { 0 }
-        };
+            for _ in 0..words_count {
+                let word_index =
+                    (u16::from(work_buf[0]) << 3) | ((u16::from(work_buf[1]) & 0b11100000) >> 5);
 
-        for _ in 0..words_count {
-            let i = (u16::from(buf[0]) << 3) | ((u16::from(buf[1]) & 0b11100000) >> 5);
-            words.push(DICTIONARY[i as usize]);
-            shift_11(&mut buf);
+                words.push(DICTIONARY[word_index as usize]);
+                shift_11(work_buf);
+            }
         }
+
+        if read_size == 0 {
+            break;
+        }
+
+        bytes_read += read_size;
+        work_rs = read_size;
+        mem::swap(&mut read_buf, &mut work_buf);
     }
 
-    if final_shift > 0 {
-        let word_index = final_shift * 186 + 1;
-        words.push("of");
-        words.push(DICTIONARY[word_index as usize]);
+    if bytes_read % 11 == 0 {
+        words.insert(words.len() - 1, "of"); // push even word
     }
 
     stdout
@@ -330,7 +347,7 @@ mod tests {
 
         let mut failures = 0;
         for m in 1..=MAX_MUL {
-            if !impl_encode_decode_soft(&data[..11*m]) {
+            if !impl_encode_decode_soft(&data[..11 * m]) {
                 failures += 1;
             }
         }
