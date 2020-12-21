@@ -145,32 +145,32 @@ fn bytes_encoded_for_words(n: usize) -> usize {
 
 fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
     let bit_length = index * 11;
-    let byte_position = bit_length / 8;
+    let byte_position = (bit_length / 8) as usize;
     let bit_shift = bit_length % 8;
     const VALUE_SHIFT: usize = 11 - 8;
 
     let applied_first_mask = (0xFF << (8 - bit_shift)) as u8;
     let applied_first = (value >> (bit_shift + VALUE_SHIFT)) as u8;
-    buf[byte_position as usize] &= applied_first_mask;
-    buf[byte_position as usize] |= applied_first;
+    buf[byte_position] &= applied_first_mask;
+    buf[byte_position] |= applied_first;
 
     if bit_shift < 5 {
         let applied_second_mask = 0xFF >> (VALUE_SHIFT + bit_shift);
         let applied_second = (value << (8 - VALUE_SHIFT - bit_shift)) as u8;
 
-        buf[byte_position + 1 as usize] &= applied_second_mask;
-        buf[byte_position + 1 as usize] |= applied_second;
+        buf[byte_position + 1] &= applied_second_mask;
+        buf[byte_position + 1] |= applied_second;
     } else if bit_shift == 5 {
         let applied_second = (0xFF & value) as u8;
-        buf[byte_position + 1 as usize] = applied_second;
+        buf[byte_position + 1] = applied_second;
     } else {
         let applied_second = (value >> (bit_shift - 5)) as u8;
         let applied_third_mask = 0xFF >> (bit_shift - 5);
         let applied_third = (value << (16 - VALUE_SHIFT - bit_shift)) as u8;
 
-        buf[byte_position + 1 as usize] = applied_second;
-        buf[byte_position + 2 as usize] &= applied_third_mask;
-        buf[byte_position + 2 as usize] |= applied_third;
+        buf[byte_position + 1] = applied_second;
+        buf[byte_position + 2] &= applied_third_mask;
+        buf[byte_position + 2] |= applied_third;
     }
 }
 
