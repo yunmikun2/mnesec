@@ -125,6 +125,7 @@ fn words_to_indices(string: &str) -> Vec<u16> {
 
 // TODO!: Remove. Left it here 'coz don't know if we are gonna need
 // it.
+#[allow(dead_code)]
 fn bit_shift_for_word(word: &str, is_padded: bool) -> usize {
     if is_padded {
         match DECODE_DICTIONARY.get(word) {
