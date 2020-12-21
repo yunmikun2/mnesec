@@ -74,7 +74,7 @@ where
     };
 
     for (n, x) in word_indices.iter().enumerate() {
-        write_with_shift_11(&mut buf, x, &n);
+        write_with_shift_11(&mut buf, *x, n);
     }
 
     let final_buf = if is_padded {
@@ -117,7 +117,7 @@ fn words_to_indices(string: &str) -> Vec<u16> {
     string
         .split("-")
         .map(|word| match DECODE_DICTIONARY.get(word) {
-            Some(index) => index.clone(),
+            Some(index) => *index,
             None => panic!("Unknown word: {}", word),
         })
         .collect()
@@ -143,7 +143,7 @@ fn bytes_encoded_for_words(n: usize) -> usize {
     bits_used / 8 + if bits_left > 0 { 1 } else { 0 }
 }
 
-fn write_with_shift_11(buf: &mut [u8], value: &u16, index: &usize) {
+fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
     let bit_length = index * 11;
     let byte_position = bit_length / 8;
     let bit_shift = bit_length % 8;
@@ -258,7 +258,7 @@ mod tests {
         let value = 0b11111111111;
         let expected = [0b11111111, 0b10111111, 0b11111100];
 
-        write_with_shift_11(&mut source, &value, &1);
+        write_with_shift_11(&mut source, value, 1);
         assert_eq!(source, expected);
     }
 
@@ -271,7 +271,7 @@ mod tests {
         let value = 0b11111111111;
         let expected = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0xFF, 0b11000000];
 
-        write_with_shift_11(&mut source, &value, &5);
+        write_with_shift_11(&mut source, value, 5);
         assert_eq!(source, expected);
     }
 
