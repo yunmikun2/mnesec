@@ -6,6 +6,16 @@ use std::io;
 use std::io::{BufReader, BufWriter, ErrorKind, Read, Write};
 
 use clap::Clap;
+use regex::Regex;
+
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static! {
+    static ref IS_PADDED_RE: Regex = Regex::new(r".*\-of\-.*").unwrap();
+    static ref ENCODED_RE: Regex = Regex::new(r"\-of\-.*").unwrap();
+    static ref PADDING_RE: Regex = Regex::new(r".*\-of\-").unwrap();
+}
 
 /// Encodes bytes passed to stdin into mnemonic sequence of dash-separated
 /// words.
@@ -15,12 +25,21 @@ struct Opts {
     /// Decode mnemonic sequence from stdin back into byte-sequence.
     #[clap(short, long)]
     decode: bool,
+
+    /// Show all padding words that are used.
+    #[clap(long)]
+    show_padding_words: bool,
 }
 
 fn main() {
     let opts = Opts::parse();
     let mut stdin = BufReader::new(io::stdin());
     let mut stdout = BufWriter::new(io::stdout());
+
+    if opts.show_padding_words {
+        show_padding_words();
+        return;
+    }
 
     if opts.decode {
         decode(&mut stdin, &mut stdout);
@@ -29,13 +48,25 @@ fn main() {
     }
 }
 
+fn show_padding_words() {
+    let padding_words: Vec<String> = (0..11)
+        .map(|i| String::from(DICTIONARY[i * 186 + 1]))
+        .collect();
+
+    let output = padding_words.join("\n");
+    println!("{}", output);
+}
+
 fn decode<R, W>(mut stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
 where
     R: Read,
     W: Write,
 {
     let input = read_string_from_reader(&mut stdin);
-    let word_indices: Vec<u16> = words_to_indices(&input);
+    let is_padded = IS_PADDED_RE.is_match(&input);
+    let encoded_string = ENCODED_RE.replace_all(&input, "");
+
+    let word_indices: Vec<u16> = words_to_indices(&encoded_string);
 
     let mut buf: Vec<u8> = {
         let buf_size = bytes_encoded_for_words(word_indices.len());
@@ -46,7 +77,13 @@ where
         write_with_shift_11(&mut buf, x, &n);
     }
 
-    stdout.write(&buf).expect("Failed to write to stdout");
+    let final_buf = if is_padded {
+        buf.split_last().unwrap().1
+    } else {
+        buf.as_slice()
+    };
+
+    stdout.write(&final_buf).expect("Failed to write to stdout");
 }
 
 fn read_string_from_reader<R>(reader: &mut R) -> String
@@ -84,6 +121,19 @@ fn words_to_indices(string: &str) -> Vec<u16> {
             None => panic!("Unknown word: {}", word),
         })
         .collect()
+}
+
+// TODO!: Remove. Left it here 'coz don't know if we are gonna need
+// it.
+fn bit_shift_for_word(word: &str, is_padded: bool) -> usize {
+    if is_padded {
+        match DECODE_DICTIONARY.get(word) {
+            Some(index) => ((index - 1) / 186) as usize,
+            None => panic!("Unknown padding word: {}", word),
+        }
+    } else {
+        0
+    }
 }
 
 fn bytes_encoded_for_words(n: usize) -> usize {
@@ -130,6 +180,7 @@ where
 {
     let mut words: Vec<&str> = vec![];
     let mut buf: [u8; 11] = [0; 11];
+    let mut final_shift: usize = 0;
 
     loop {
         let read_size = match stdin.read(&mut buf) {
@@ -141,7 +192,13 @@ where
 
         let words_count = {
             let bit_size = read_size * 8;
-            bit_size / 11 + if bit_size % 11 > 0 { 1 } else { 0 }
+            let bit_shift = bit_size % 11;
+
+            if bit_shift > 0 {
+                final_shift = bit_shift;
+            }
+
+            bit_size / 11 + if bit_shift > 0 { 1 } else { 0 }
         };
 
         for _ in 0..words_count {
@@ -149,6 +206,12 @@ where
             words.push(DICTIONARY[i as usize]);
             shift_11(&mut buf);
         }
+    }
+
+    if final_shift > 0 {
+        let word_index = final_shift * 186 + 1;
+        words.push("of");
+        words.push(DICTIONARY[word_index as usize]);
     }
 
     stdout
@@ -214,6 +277,24 @@ mod tests {
     #[test]
     fn naive_encoding_with_deconding_produces_original_sequense_of_bytes() {
         let original = rand::thread_rng().gen::<[u8; 11]>();
+        let mut mediator: Vec<u8> = Vec::new();
+        let mut result: Vec<u8> = Vec::new();
+        {
+            let mut stdin1 = BufReader::new(&original[..]);
+            let mut stdout1 = BufWriter::new(&mut mediator);
+            encode(&mut stdin1, &mut stdout1);
+        }
+        {
+            let mut stdin2 = BufReader::new(&mediator[..]);
+            let mut stdout2 = BufWriter::new(&mut result);
+            decode(&mut stdin2, &mut stdout2);
+        }
+        assert_eq!(&original, &result[..]);
+    }
+
+    #[test]
+    fn any_encoding_with_decoding_produces_original_sequense_of_bytes() {
+        let original = rand::thread_rng().gen::<[u8; 8]>();
         let mut mediator: Vec<u8> = Vec::new();
         let mut result: Vec<u8> = Vec::new();
         {
