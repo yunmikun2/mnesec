@@ -275,9 +275,7 @@ mod tests {
         assert_eq!(source, expected);
     }
 
-    #[test]
-    fn naive_encoding_with_decoding_produces_original_sequence_of_bytes() {
-        let original = rand::thread_rng().gen::<[u8; 11]>();
+    fn impl_encode_decode_soft(original: &[u8]) -> bool {
         let mut mediator: Vec<u8> = Vec::new();
         let mut result: Vec<u8> = Vec::new();
         {
@@ -290,33 +288,82 @@ mod tests {
             let mut stdout2 = BufWriter::new(&mut result);
             decode(&mut stdin2, &mut stdout2);
         }
-        assert_eq!(&original, &result[..]);
+        if original == result.as_slice() {
+            return true;
+        } else {
+            println!("   {:x?} ({})\n!= {:x?}\n",
+                     original, original.len(), result.as_slice());
+            return false;
+        }
+    }
+
+    fn impl_encode_decode(original: &[u8]) {
+        assert!(impl_encode_decode_soft(original), "len {}", original.len());
     }
 
     #[test]
-    fn any_encoding_with_decoding_produces_original_sequence_of_bytes() {
+    fn naive_encoding_with_decoding_produces_original_sequence_of_bytes() {
+        let original = rand::thread_rng().gen::<[u8; 11]>();
+        impl_encode_decode(&original[..]);
+    }
+
+    #[test]
+    fn decoding_produces_original_sequence_for_small_inputs() {
+        let mut data = vec![0; 10];
+        rand::thread_rng().fill_bytes(&mut data);
+
+        let mut failures = 0;
+        for i in 1..=10 {
+            if !impl_encode_decode_soft(&data[..i]) {
+                failures += 1;
+            }
+        }
+        assert_eq!(failures, 0);
+    }
+
+    #[test]
+    fn decoding_produces_original_sequence_for_block_even_inputs() {
+        const MAX_MUL: usize = 10;
+        let mut data = vec![0; 11 * MAX_MUL];
+        rand::thread_rng().fill_bytes(&mut data);
+
+        let mut failures = 0;
+        for m in 1..=MAX_MUL {
+            if !impl_encode_decode_soft(&data[..11*m]) {
+                failures += 1;
+            }
+        }
+        assert_eq!(failures, 0);
+    }
+
+    #[test]
+    fn decoding_produces_original_sequence_for_block_odd_inputs() {
+        const START: usize = 12;
+        const END: usize = START * 3;
+        let mut data = vec![0; END];
+        rand::thread_rng().fill_bytes(&mut data);
+
+        let mut failures = 0;
+        for i in START..=END {
+            if !impl_encode_decode_soft(&data[..i]) {
+                failures += 1;
+            }
+        }
+        assert_eq!(failures, 0);
+    }
+
+    #[test]
+    fn decoding_produces_original_sequence_for_random_input() {
         const MAX_DATA_LEN: usize = 128;
         const TEST_PASSES: u32 = 25;
 
         for pass in 0..TEST_PASSES {
             let data_len = rand::thread_rng().gen_range(0, MAX_DATA_LEN);
             let mut original = vec![0; data_len];
-
             rand::thread_rng().fill_bytes(original.as_mut_slice());
-            let mut mediator: Vec<u8> = Vec::new();
-            let mut result: Vec<u8> = Vec::new();
-            {
-                let mut stdin1 = BufReader::new(&original[..]);
-                let mut stdout1 = BufWriter::new(&mut mediator);
-                encode(&mut stdin1, &mut stdout1);
-            }
-            {
-                let mut stdin2 = BufReader::new(&mediator[..]);
-                let mut stdout2 = BufWriter::new(&mut result);
-                decode(&mut stdin2, &mut stdout2);
-            }
-            assert_eq!(&original, &result[..],
-                       "pass {}, len {}", pass, data_len);
+
+            println!("pass {}", pass);
+            impl_encode_decode(original.as_slice());
         }
     }
 }
