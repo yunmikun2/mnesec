@@ -15,5 +15,7 @@ strip = "symbols"
 clap = "3.0.0-beta.2"
 lazy_static = "1.4.0"
 phf = { version = "0.8.0", features = ["macros"] }
+
+[dev-dependencies]
 rand = "0.7.3"
 regex = "1.4.2"
