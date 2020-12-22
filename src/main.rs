@@ -359,11 +359,11 @@ mod tests {
         const TEST_PASSES: u32 = 25;
 
         for pass in 0..TEST_PASSES {
-            let data_len = rand::thread_rng().gen_range(0, MAX_DATA_LEN);
+            let data_len = rand::thread_rng().gen_range(1, MAX_DATA_LEN);
             let mut original = vec![0; data_len];
             rand::thread_rng().fill_bytes(original.as_mut_slice());
 
-            println!("pass {}", pass);
+            println!("pass {}: {:x?}", pass, original);
             impl_encode_decode(original.as_slice());
         }
     }
