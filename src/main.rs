@@ -15,10 +15,6 @@ struct Opts {
     /// Decode mnemonic sequence from stdin back into byte-sequence.
     #[clap(short, long)]
     decode: bool,
-
-    /// Show all padding words that are used.
-    #[clap(long)]
-    show_padding_words: bool,
 }
 
 fn main() {
@@ -26,25 +22,11 @@ fn main() {
     let mut stdin = BufReader::new(io::stdin());
     let mut stdout = BufWriter::new(io::stdout());
 
-    if opts.show_padding_words {
-        show_padding_words();
-        return;
-    }
-
     if opts.decode {
         decode(&mut stdin, &mut stdout);
     } else {
         encode(&mut stdin, &mut stdout);
     }
-}
-
-fn show_padding_words() {
-    let padding_words: Vec<String> = (0..11)
-        .map(|i| String::from(DICTIONARY[i * 186 + 1]))
-        .collect();
-
-    let output = padding_words.join("\n");
-    println!("{}", output);
 }
 
 fn decode<R, W>(mut stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
@@ -127,20 +109,6 @@ fn words_to_indices(string: &str, last_word: Option<&str>) -> Vec<u16> {
             None => panic!("Unknown word: {}", word),
         })
         .collect();
-}
-
-// TODO!: Remove. Left it here 'coz don't know if we are gonna need
-// it.
-#[allow(dead_code)]
-fn bit_shift_for_word(word: &str, is_padded: bool) -> usize {
-    if is_padded {
-        match DECODE_DICTIONARY.get(word) {
-            Some(index) => ((index - 1) / 186) as usize,
-            None => panic!("Unknown padding word: {}", word),
-        }
-    } else {
-        0
-    }
 }
 
 fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
