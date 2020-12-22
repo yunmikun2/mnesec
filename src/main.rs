@@ -101,14 +101,14 @@ fn trim_newline(s: &mut String) {
 }
 
 fn words_to_indices(string: &str, last_word: Option<&str>) -> Vec<u16> {
-    return string
+    string
         .split("-")
         .chain(last_word.iter().cloned())
         .map(|word| match DECODE_DICTIONARY.get(word) {
             Some(index) => *index,
             None => panic!("Unknown word: {}", word),
         })
-        .collect();
+        .collect()
 }
 
 fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
@@ -274,11 +274,11 @@ mod tests {
             decode(&mut stdin2, &mut stdout2);
         }
         if original == result.as_slice() {
-            return true;
+            true
         } else {
             println!("   {:x?} ({})\n!= {:x?}\n",
                      original, original.len(), result.as_slice());
-            return false;
+            false
         }
     }
 
