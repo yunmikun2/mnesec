@@ -309,8 +309,9 @@ mod tests {
 
     #[test]
     fn decoding_produces_original_sequence_for_small_inputs() {
-        let mut data = vec![0; 10];
-        rand::thread_rng().fill_bytes(&mut data);
+        let data =
+            [0xaa, 0xab, 0xac, 0xad, 0xaf,
+                0xba, 0xbb, 0xbc, 0xbd, 0xbf];
 
         let mut failures = 0;
         for i in 1..=10 {
