@@ -1,15 +1,12 @@
-cargo-features = ["strip"]
-
 [package]
 name = "mnesec"
-version = "0.1.0"
-authors = ["yunmi <yunmikun2@protonmail.com>"]
+version = "1.0.0"
+authors = ["yunmi <yunmikun2@protonmail.com>", "mfgm2 <repom2@airmail.cc>"]
 edition = "2018"
 
 [profile.release]
 lto = true
 panic = "abort"
-strip = "symbols"
 
 [dependencies]
 clap = "3.0.0-beta.2"
