@@ -3,6 +3,7 @@ name = "mnesec"
 version = "1.0.0"
 authors = ["yunmi <yunmikun2@protonmail.com>", "mfgm2 <repom2@airmail.cc>"]
 edition = "2018"
+build = "build.rs"
 
 [profile.release]
 lto = true
