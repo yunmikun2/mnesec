@@ -31,7 +31,10 @@ fn main() {
         stdout.write(buf.as_slice())
             .expect("Failed to write to stdout");
     } else {
-        encode(&mut stdin, &mut stdout);
+        let words = encode(&mut stdin);
+        stdout
+            .write(words.join("-").as_bytes())
+            .expect("Failed to write to stdout");
     }
 }
 
@@ -133,11 +136,7 @@ fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
     }
 }
 
-fn encode<R, W>(stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
-    where
-        R: Read,
-        W: Write,
-{
+fn encode(input: &mut impl Read) -> Vec<&'static str> {
     const BUF_SIZE: usize = 11;
 
     let mut words: Vec<&str> = vec![];
@@ -150,7 +149,7 @@ fn encode<R, W>(stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
     let mut bytes_read: usize = 0;
 
     loop {
-        let read_size = match stdin.read(read_buf) {
+        let read_size = match input.read(read_buf) {
             Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(e) => panic!("Failed to read stdio: {}", e),
             Ok(sz) => sz,
@@ -191,9 +190,7 @@ fn encode<R, W>(stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
         words.insert(words.len() - 1, "of"); // push even word
     }
 
-    stdout
-        .write(words.join("-").as_bytes())
-        .expect("Failed to write to stdout");
+    words
 }
 
 /// Shift the buffer left for 11 bits.
@@ -212,7 +209,6 @@ fn shift_11(buf: &mut [u8]) {
 mod tests {
     use crate::{decode, encode, shift_11, write_with_shift_11};
     use rand::{Rng, RngCore};
-    use std::io::{BufReader, BufWriter};
 
     #[test]
     fn shift_11_works_correctly() {
@@ -252,17 +248,10 @@ mod tests {
     }
 
     fn impl_encode_decode_soft(original: &[u8]) -> bool {
-        let mut mediator: Vec<u8> = Vec::new();
-        let result;
-        {
-            let mut stdin1 = BufReader::new(&original[..]);
-            let mut stdout1 = BufWriter::new(&mut mediator);
-            encode(&mut stdin1, &mut stdout1);
-        }
-        {
-            let input = String::from_utf8(mediator).unwrap();
-            result = decode(input.split('-'));
-        }
+        let mut orig_ptr = original;
+        let mid_words = encode(&mut orig_ptr);
+        let mid_string = mid_words.join("-");
+        let result = decode(mid_string.split('-'));
         if original == result.as_slice() {
             true
         } else {
