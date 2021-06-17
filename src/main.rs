@@ -35,6 +35,17 @@ fn main() {
     }
 }
 
+fn trim_newline(s: &mut String) {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+}
+
+// ==============================================================
+
 fn decode<I, S>(input: I) -> Vec<u8>
     where
         S: AsRef<str>,
@@ -89,15 +100,6 @@ fn decode<I, S>(input: I) -> Vec<u8>
 
     buf.truncate(data_size);
     buf
-}
-
-fn trim_newline(s: &mut String) {
-    if s.ends_with('\n') {
-        s.pop();
-        if s.ends_with('\r') {
-            s.pop();
-        }
-    }
 }
 
 fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
