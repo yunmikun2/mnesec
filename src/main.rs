@@ -5,9 +5,10 @@ use dictionary::{DECODE_DICTIONARY, DICTIONARY};
 use std::io::{self, BufReader, BufWriter, ErrorKind, Read, Write, BufRead};
 use std::mem;
 use std::str;
-use std::iter;
 
 use clap::Clap;
+
+const NEWLINES: &'static [char] = &['\r', '\n'];
 
 /// Encodes bytes passed to stdin into mnemonic sequence of dash-separated
 /// words.
@@ -47,15 +48,6 @@ fn main() {
     }
 }
 
-fn trim_newline(s: &mut String) {
-    if s.ends_with('\n') {
-        s.pop();
-        if s.ends_with('\r') {
-            s.pop();
-        }
-    }
-}
-
 // ==============================================================
 
 fn decode_easy(input: &str, delimiter: &str) -> Vec<u8> {
@@ -78,7 +70,7 @@ fn decode<I, S>(input: I) -> Vec<u8>
                 even_mark = Some(i);
                 continue;
             }
-            word => match DECODE_DICTIONARY.get(word) {
+            word => match DECODE_DICTIONARY.get(word.trim_matches(NEWLINES)) {
                 Some(index) => *index,
                 None => panic!("Unknown word: {}", word),
             }
