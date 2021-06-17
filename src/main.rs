@@ -18,10 +18,13 @@ struct Opts {
     /// Decode mnemonic sequence from stdin back into byte-sequence.
     #[clap(short, long)]
     decode: bool,
+    /// Don't print trailing newline
+    #[clap(short, long)]
+    no_newline: bool,
 }
 
 fn main() {
-    let opts = Opts::parse();
+    let opts: Opts = Opts::parse();
     let mut stdin = BufReader::new(io::stdin());
     let mut stdout = BufWriter::new(io::stdout());
 
@@ -37,6 +40,7 @@ fn main() {
             .expect("Failed to write to stdout");
     } else {
         let words = encode(&mut stdin);
+
         for (i, word) in words.iter().enumerate() {
             match i {
                 0 => stdout.write_all(word.as_bytes()),
@@ -44,6 +48,10 @@ fn main() {
                         .and_then(|_| stdout.write_all(word.as_bytes())),
             }
                 .expect("Failed to write to stdout");
+        }
+
+        if !opts.no_newline {
+            println!();
         }
     }
 }
