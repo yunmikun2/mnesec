@@ -23,30 +23,41 @@ fn main() {
     let mut stdout = BufWriter::new(io::stdout());
 
     if opts.decode {
-        decode(&mut stdin, &mut stdout);
+        let mut input = String::new();
+        stdin.read_to_string(&mut input).unwrap();
+        trim_newline(&mut input);
+
+        let buf = decode(input.split('-'));
+        stdout.write(buf.as_slice())
+            .expect("Failed to write to stdout");
     } else {
         encode(&mut stdin, &mut stdout);
     }
 }
 
-fn decode<R, W>(mut stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
+fn decode<I, S>(input: I) -> Vec<u8>
     where
-        R: Read,
-        W: Write,
+        S: AsRef<str>,
+        I: Iterator<Item=S>,
 {
-    const EVEN_MARK: &str = "-of-";
-    const EVEN_MARK_LEN: usize = EVEN_MARK.len();
+    const EVEN_MARK: &str = "of";
 
-    let input = read_string_from_reader(&mut stdin);
-    let even_mark = input.rfind(EVEN_MARK);
+    let mut even_mark = None;
+    let mut word_indices = Vec::new();
 
-    let word_indices = match even_mark {
-        Some(pos) => {
-            let (head, tail) = input.split_at(pos);
-            words_to_indices(head, Some(&tail[EVEN_MARK_LEN..]))
-        }
-        None => words_to_indices(input.as_str(), None),
-    };
+    for (i, w) in input.enumerate() {
+        let x = match w.as_ref() {
+            evm if evm == EVEN_MARK => {
+                even_mark = Some(i);
+                continue;
+            }
+            word => match DECODE_DICTIONARY.get(word) {
+                Some(index) => *index,
+                None => panic!("Unknown word: {}", word),
+            }
+        };
+        word_indices.push(x);
+    }
 
     let words_count = word_indices.len();
     let bit_size = words_count * 11;
@@ -60,34 +71,23 @@ fn decode<R, W>(mut stdin: &mut BufReader<R>, stdout: &mut BufWriter<W>)
         write_with_shift_11(&mut buf, *x, n);
     }
 
-    if even_mark.is_none() {
-        if bit_rem != 0 {
-            data_size -= 1;
+    match even_mark {
+        Some(i) => {
+            if i != words_count - 1 {
+                panic!("Incorrect position of even mark");
+            }
         }
-        if buf[buf_size - 1] & 0x80 > 0 {
-            data_size -= 1;
-        }
-    }
-
-    stdout.write(&buf[..data_size])
-        .expect("Failed to write to stdout");
-}
-
-fn read_string_from_reader<R>(reader: &mut R) -> String
-    where
-        R: Read,
-{
-    let mut buf: String = String::new();
-
-    loop {
-        match reader.read_to_string(&mut buf) {
-            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(e) => panic!("Failed to read stdio: {}", e),
-            Ok(_) => break,
+        None => {
+            if bit_rem != 0 {
+                data_size -= 1;
+            }
+            if buf[buf_size - 1] & 0x80 > 0 {
+                data_size -= 1;
+            }
         }
     }
 
-    trim_newline(&mut buf);
+    buf.truncate(data_size);
     buf
 }
 
@@ -98,17 +98,6 @@ fn trim_newline(s: &mut String) {
             s.pop();
         }
     }
-}
-
-fn words_to_indices(string: &str, last_word: Option<&str>) -> Vec<u16> {
-    string
-        .split("-")
-        .chain(last_word.iter().cloned())
-        .map(|word| match DECODE_DICTIONARY.get(word) {
-            Some(index) => *index,
-            None => panic!("Unknown word: {}", word),
-        })
-        .collect()
 }
 
 fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
@@ -262,16 +251,15 @@ mod tests {
 
     fn impl_encode_decode_soft(original: &[u8]) -> bool {
         let mut mediator: Vec<u8> = Vec::new();
-        let mut result: Vec<u8> = Vec::new();
+        let result;
         {
             let mut stdin1 = BufReader::new(&original[..]);
             let mut stdout1 = BufWriter::new(&mut mediator);
             encode(&mut stdin1, &mut stdout1);
         }
         {
-            let mut stdin2 = BufReader::new(&mediator[..]);
-            let mut stdout2 = BufWriter::new(&mut result);
-            decode(&mut stdin2, &mut stdout2);
+            let input = String::from_utf8(mediator).unwrap();
+            result = decode(input.split('-'));
         }
         if original == result.as_slice() {
             true
