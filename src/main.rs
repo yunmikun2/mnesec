@@ -2,8 +2,10 @@ mod dictionary;
 
 use dictionary::{DECODE_DICTIONARY, DICTIONARY};
 
-use std::io::{self, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::io::{self, BufReader, BufWriter, ErrorKind, Read, Write, BufRead};
 use std::mem;
+use std::str;
+use std::iter;
 
 use clap::Clap;
 
@@ -23,18 +25,25 @@ fn main() {
     let mut stdout = BufWriter::new(io::stdout());
 
     if opts.decode {
-        let mut input = String::new();
-        stdin.read_to_string(&mut input).unwrap();
-        trim_newline(&mut input);
-
-        let buf = decode(input.split('-'));
+        let input = stdin
+            .split(b'-')
+            .map(|b| {
+                String::from_utf8(b.expect("Error reading stdin"))
+                    .expect("Error decoding UTF-8")
+            });
+        let buf = decode(input);
         stdout.write(buf.as_slice())
             .expect("Failed to write to stdout");
     } else {
         let words = encode(&mut stdin);
-        stdout
-            .write(words.join("-").as_bytes())
-            .expect("Failed to write to stdout");
+        for (i, word) in words.iter().enumerate() {
+            match i {
+                0 => stdout.write_all(word.as_bytes()),
+                _ => stdout.write_all(&[b'-'])
+                        .and_then(|_| stdout.write_all(word.as_bytes())),
+            }
+                .expect("Failed to write to stdout");
+        }
     }
 }
 
