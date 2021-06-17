@@ -49,6 +49,10 @@ fn trim_newline(s: &mut String) {
 
 // ==============================================================
 
+fn decode_easy(input: &str, delimiter: &str) -> Vec<u8> {
+    decode(input.split(delimiter))
+}
+
 fn decode<I, S>(input: I) -> Vec<u8>
     where
         S: AsRef<str>,
@@ -136,6 +140,10 @@ fn write_with_shift_11(buf: &mut [u8], value: u16, index: usize) {
     }
 }
 
+fn encode_easy(input: &mut impl Read, delimiter: &str) -> String {
+    encode(input).join(delimiter)
+}
+
 fn encode(input: &mut impl Read) -> Vec<&'static str> {
     const BUF_SIZE: usize = 11;
 
@@ -207,7 +215,7 @@ fn shift_11(buf: &mut [u8]) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{decode, encode, shift_11, write_with_shift_11};
+    use crate::{shift_11, write_with_shift_11, encode_easy, decode_easy};
     use rand::{Rng, RngCore};
 
     #[test]
@@ -249,9 +257,8 @@ mod tests {
 
     fn impl_encode_decode_soft(original: &[u8]) -> bool {
         let mut orig_ptr = original;
-        let mid_words = encode(&mut orig_ptr);
-        let mid_string = mid_words.join("-");
-        let result = decode(mid_string.split('-'));
+        let mid = encode_easy(&mut orig_ptr, "-");
+        let result = decode_easy(mid.as_str(), "-");
         if original == result.as_slice() {
             true
         } else {
